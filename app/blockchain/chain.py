@@ -1,7 +1,6 @@
 import json
 import os
-from typing import List, Optional
-
+from typing import List, Optional, Tuple
 from .block import Block
 from .transaction import Transaction
 
@@ -10,8 +9,6 @@ class Blockchain:
     def __init__(self, storage_path: Optional[str] = None) -> None:
         self.chain: List[Block] = []
         self.storage_path = storage_path
-
-    # ---------- FR-C ----------
 
     def __len__(self) -> int:
         return len(self.chain)
@@ -43,24 +40,35 @@ class Blockchain:
         self._autosave()
         return new_block
 
-    def is_chain_valid(self) -> bool:
+    # НОВЫЙ МЕТОД ДЛЯ СПРИНТА 3
+    def validate_chain(self) -> Tuple[bool, str]:
         if not self.chain:
-            return False
+            return False, "Цепочка пуста"
+
         for i, block in enumerate(self.chain):
+            # a. Проверка хеша самого блока
             if not block.is_valid():
-                return False
+                return False, f"Блок {i}: Хеш блока не совпадает с пересчитанным. Блок был изменен."
+
+            # b. Проверка связи с предыдущим блоком
             if i == 0:
                 if block.prev_hash != "0":
-                    return False
+                    return False, f"Блок {i}: У генезис-блока prev_hash должен быть '0'"
             else:
-                prev = self.chain[i - 1]
-                if block.prev_hash != prev.hash:
-                    return False
-                if block.index != i:
-                    return False
-        return True
+                prev_block = self.chain[i - 1]
+                if block.prev_hash != prev_block.hash:
+                    return False, f"Блок {i}: Разрыв цепочки. prev_hash не совпадает с хешем Блока {i - 1}"
 
-    # ---------- FR-S ----------
+            # c. Проверка хешей каждой записи внутри блока
+            for j, tx in enumerate(block.transactions):
+                if tx.hash != tx.compute_hash():
+                    return False, f"Блок {i}, Запись {j}: Хеш транзакции не совпадает. Запись была изменена."
+
+        return True, "Все проверки пройдены. Цепочка валидна."
+
+    def is_chain_valid(self) -> bool:
+        # Оставляем для обратной совместимости
+        return self.validate_chain()[0]
 
     def save_to_file(self, path: Optional[str] = None) -> None:
         target = path or self.storage_path
@@ -74,7 +82,6 @@ class Blockchain:
     def load_from_file(cls, path: str) -> "Blockchain":
         if not os.path.exists(path):
             return cls(storage_path=path)
-
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -87,9 +94,6 @@ class Blockchain:
                 bc.chain.append(Block.from_dict(block_data))
         except (KeyError, TypeError) as e:
             raise ValueError(f"Invalid blockchain file structure: {e}") from e
-
-        if bc.chain and not bc.is_chain_valid():
-            raise ValueError("Loaded blockchain is invalid")
 
         return bc
 
