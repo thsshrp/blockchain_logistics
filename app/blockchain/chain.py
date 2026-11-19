@@ -93,6 +93,69 @@ class Blockchain:
         self._autosave()
         return True, f"Блок {block.index} успешно проверен и добавлен в цепочку.", None
 
+    def get_blocks_from(self, from_index: int) -> List[Block]:
+        if from_index < 0:
+            raise ValueError("from_index must be non-negative")
+        return list(self.chain[from_index:])
+
+    def validate_incoming_blocks(self, blocks: List[Block]) -> Tuple[bool, str, Optional[str]]:
+        """Атомарно проверяет последовательность новых блоков перед добавлением в цепочку."""
+        if not self.chain:
+            return False, "Локальная цепочка не инициализирована (нет генезис-блока).", "CHAIN_NOT_INITIALIZED"
+        if not blocks:
+            return True, "Нет новых блоков для добавления.", None
+
+        prev_index = self.chain[-1].index
+        prev_hash = self.chain[-1].hash
+
+        for block in blocks:
+            expected_index = prev_index + 1
+            if block.index != expected_index:
+                return (
+                    False,
+                    f"Ошибка пакета на блоке {block.index}: ожидался индекс {expected_index}.",
+                    "INVALID_BLOCK_INDEX",
+                )
+
+            if block.prev_hash != prev_hash:
+                return (
+                    False,
+                    f"Ошибка пакета на блоке {block.index}: prev_hash не совпадает с хешем блока {prev_index}.",
+                    "PREV_HASH_MISMATCH",
+                )
+
+            for j, tx in enumerate(block.transactions):
+                if not tx.is_valid():
+                    return (
+                        False,
+                        f"Ошибка пакета: Блок {block.index}, транзакция {j} — хеш транзакции не совпадает.",
+                        "INVALID_TRANSACTION_HASH",
+                    )
+
+            if not block.is_valid():
+                return (
+                    False,
+                    f"Ошибка пакета: Блок {block.index} — хеш блока не совпадает с пересчитанным.",
+                    "INVALID_BLOCK_HASH",
+                )
+
+            prev_index = block.index
+            prev_hash = block.hash
+
+        return True, f"Все {len(blocks)} блок(ов) валидны.", None
+
+    def receive_blocks(self, blocks: List[Block]) -> Tuple[bool, str, Optional[str]]:
+        """Добавляет пачку блоков целиком только если валидны все блоки без исключения."""
+        ok, msg, err_code = self.validate_incoming_blocks(blocks)
+        if not ok:
+            return False, msg, err_code
+        if not blocks:
+            return True, msg, None
+
+        self.chain.extend(blocks)
+        self._autosave()
+        return True, f"Синхронизировано и проверено блоков: {len(blocks)}.", None
+
     def validate_chain(self) -> Tuple[bool, str]:
         if not self.chain:
             return False, "Цепочка пуста"

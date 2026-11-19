@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from app.schemas.node import (
@@ -6,9 +6,11 @@ from app.schemas.node import (
     BroadcastRequest,
     CreateBlockRequest,
     FetchBlockRequest,
+    NodeEventSchema,
     NodeInfoResponse,
     PeerDeliveryResult,
     PeerRegisterRequest,
+    SyncRequest,
 )
 from app.services.node_service import NodeService, NodeServiceError
 
@@ -26,11 +28,26 @@ def _raise_http(exc: NodeServiceError) -> None:
     )
 
 
-# --- Информация о ноде и валидация ---
+# --- Информация о ноде, события/ошибки и валидация ---
 
 @router.get("/node/info", response_model=NodeInfoResponse, tags=["Node"])
 async def get_node_info(request: Request):
     return _service(request).get_info()
+
+
+@router.get("/node/events", response_model=List[NodeEventSchema], tags=["Node"])
+async def get_node_events(
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=100),
+    level: Optional[str] = Query(default=None),
+):
+    return _service(request).get_events(limit=limit, level=level)
+
+
+@router.delete("/node/events", tags=["Node"])
+async def clear_node_events(request: Request):
+    _service(request).clear_events()
+    return {"status": "cleared"}
 
 
 @router.get("/chain/validate", tags=["Chain"])
@@ -39,12 +56,17 @@ async def validate_chain(request: Request):
     return {"is_valid": ok, "message": msg, "chain_length": length}
 
 
-# --- Работа с пирами ---
+# --- Работа с пирами и статусом синхронизации ---
 
 @router.get("/peers", tags=["Peers"])
 async def list_peers(request: Request):
     svc = _service(request)
     return {"node_id": svc.settings.node_id, "peers": list(svc.peers)}
+
+
+@router.get("/peers/status", tags=["Peers"])
+async def get_peers_status(request: Request):
+    return await _service(request).get_peers_status()
 
 
 @router.post("/peers/register", status_code=status.HTTP_201_CREATED, tags=["Peers"])
@@ -73,11 +95,19 @@ async def inspect_peer(request: Request, peer_url: str = Query(...)):
         _raise_http(exc)
 
 
-# --- Блоки: чтение, создание, Push и Pull ---
+# --- Синхронизация сети ---
+
+@router.post("/sync", tags=["Sync"])
+async def sync_network(request: Request, body: Optional[SyncRequest] = None):
+    peer_url = body.peer_url if body else None
+    return await _service(request).sync_with_network(target_peer=peer_url)
+
+
+# --- Блоки ---
 
 @router.get("/blocks", response_model=List[BlockSchema], tags=["Blocks"])
-async def list_blocks(request: Request):
-    return _service(request).get_all_blocks()
+async def list_blocks(request: Request, from_index: int = Query(default=0, ge=0)):
+    return _service(request).get_all_blocks(from_index=from_index)
 
 
 @router.get("/blocks/latest", response_model=BlockSchema, tags=["Blocks"])

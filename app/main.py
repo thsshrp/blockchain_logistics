@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 import httpx
@@ -17,9 +18,20 @@ def create_app(
     http_transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> FastAPI:
     cfg = settings or NodeSettings.from_env()
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        svc: NodeService = application.state.node_service
+        svc.start_background_sync()
+        try:
+            yield
+        finally:
+            await svc.stop_background_sync()
+
     application = FastAPI(
         title=f"Blockchain Logistics Node ({cfg.node_id})",
-        version="0.4.0",
+        version="0.5.0",
+        lifespan=lifespan,
     )
 
     application.add_middleware(
