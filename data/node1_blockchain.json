@@ -1,0 +1,13 @@
+{
+  "length": 1,
+  "chain": [
+    {
+      "index": 0,
+      "timestamp": "2026-01-01T00:00:00+00:00",
+      "transactions": [],
+      "prev_hash": "0",
+      "hash": "21b0fbe71551fe5608edb7b45fb0767b7c23315dac9a7377ec12ec5b3942aba1",
+      "nonce": 0
+    }
+  ]
+}

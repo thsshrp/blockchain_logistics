@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 from .crypto import sha256
 from .transaction import Transaction, utc_now_iso
@@ -12,10 +12,10 @@ class Block:
     prev_hash: str
     timestamp: str = field(default_factory=utc_now_iso)
     nonce: int = 0
-    hash: str = ""
+    hash: Optional[str] = None
 
     def __post_init__(self) -> None:
-        if not self.hash:
+        if self.hash is None:
             self.hash = self.compute_hash()
 
     def _hashable_dict(self) -> dict:
@@ -55,5 +55,5 @@ class Block:
             prev_hash=data["prev_hash"],
             timestamp=data["timestamp"],
             nonce=data.get("nonce", 0),
-            hash=data.get("hash", ""),
+            hash=data["hash"] if "hash" in data else None,
         )
